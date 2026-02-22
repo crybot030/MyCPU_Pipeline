@@ -1,0 +1,24 @@
+# Vivado 临时文件与日志
+*.log
+*.jou
+*.str
+*.os
+*.vbe
+*.jed
+
+# 自动生成的文件夹
+/.Xil/
+/xui/
+*.rpt
+*.pb
+
+# 编译与运行结果（核心：不要传 runs 文件夹）
+*.runs/
+*.cache/
+*.hw/
+*.ip_user_files/
+*.sim/
+*.gen/
+*.vcd
+*.wdb
+# 这里的原则是：只保留源代码 (*.v, *.sv)、约束文件 (*.xdc) 和工程文件 (*.xpr)
