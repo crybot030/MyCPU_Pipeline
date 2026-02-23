@@ -2,14 +2,14 @@ module mycpu_top(
     input  wire        clk,
     input  wire        resetn,
     // inst sram interface
-    output wire        inst_sram_en,     // 新增：指令RAM片选使能
-    output wire [ 3:0] inst_sram_we,     // 修改：4位写使能
+    output wire        inst_sram_en,     // 新增：指令RAM片�?�使�?
+    output wire [ 3:0] inst_sram_we,     // 修改�?4位写使能
     output wire [31:0] inst_sram_addr,
     output wire [31:0] inst_sram_wdata,
     input  wire [31:0] inst_sram_rdata,
     // data sram interface
-    output wire        data_sram_en,     // 新增：数据RAM片选使能
-    output wire [ 3:0] data_sram_we,     // 修改：4位写使能
+    output wire        data_sram_en,     // 新增：数据RAM片�?�使�?
+    output wire [ 3:0] data_sram_we,     // 修改�?4位写使能
     output wire [31:0] data_sram_addr,
     output wire [31:0] data_sram_wdata,
     input  wire [31:0] data_sram_rdata,
@@ -22,6 +22,15 @@ module mycpu_top(
 
 reg reset;
 always @(posedge clk) reset <= ~resetn;
+
+// 全局流水线控制信号声�?
+wire ID_stall;
+wire ID_cancel;
+wire real_br_taken;
+wire [31:0] ID_br_target;
+wire        WB_rf_we;
+wire [ 4:0] WB_rf_waddr;
+wire [31:0] WB_rf_wdata;
 
 // ====================================================================
 // Pre-IF / IF Stage
@@ -40,13 +49,18 @@ always @(posedge clk) begin
 end
 
 assign seq_pc = pc + 32'h4;
-// nextpc由ID阶段的跳转逻辑决定（不考虑延迟槽刷新，按无冲突处理）
-assign nextpc = ID_br_taken ? ID_br_target : seq_pc;
+// nextpc逻辑�?
+//1. 如果跳转成立（且未被阻塞），则跳转到目标地址
+//2. 如果流水线阻塞，PC不变,以便SRAM继续流出处于IF级的指令
+//3. 正常情况顺序执行
+assign nextpc=real_br_taken?ID_br_target:
+              ID_stall     ?pc:
+                            seq_pc;
 
-// 采用同步SRAM读：用nextpc作为读地址。由于SRAM有1周期延迟，
-// 当下一周期PC跳变到nextpc时，SRAM刚好吐出对应指令数据。
+// 采用同步SRAM读：用nextpc作为读地�?。由于SRAM�?1周期延迟�?
+// 当下�?周期PC跳变到nextpc时，SRAM刚好吐出对应指令数据�?
 assign inst_sram_en    = 1'b1;         // 恒定使能取指
-assign inst_sram_we    = 4'b0000;      // 指令存储器只读
+assign inst_sram_we    = 4'b0000;      // 指令存储器只�?
 assign inst_sram_addr  = nextpc; 
 assign inst_sram_wdata = 32'b0;
 
@@ -59,18 +73,22 @@ reg [31:0] ID_inst;
 reg        ID_valid;
 
 always @(posedge clk) begin
-    if (reset) begin
-        ID_valid <= 1'b0;
-        ID_pc    <= 32'b0;
-        ID_inst  <= 32'b0;
+    if(reset) begin
+        ID_valid<=1'b0;
+        ID_pc   <=32'b0;
+        ID_inst <=32'b0;
     end
-    else begin
-        ID_valid <= 1'b1;               // 恒定为1，不考虑冲突引发的阻塞
-        ID_pc    <= pc;
-        ID_inst  <= inst_sram_rdata;
+    //发生控制跳转，取消转移指令后的一条指令，将valid�?0
+    else if(ID_cancel) begin
+        ID_valid <=1'b0;
+    end
+    //如果没有阻塞，正常接收IF级数�?
+    else if(!ID_stall) begin
+        ID_valid <=1'b1;
+        ID_pc    <=pc;
+        ID_inst  <=inst_sram_rdata;
     end
 end
-
 
 // ====================================================================
 // ID Stage
@@ -185,7 +203,7 @@ wire [ 4:0] rf_raddr2 = ID_src_reg_is_rd ? ID_rd : ID_rk;
 wire [31:0] rf_rdata1;
 wire [31:0] rf_rdata2;
 
-// 注意写回端接到 WB 级的信号
+// 注意写回端接�? WB 级的信号
 regfile u_regfile(
     .clk    (clk        ),
     .raddr1 (rf_raddr1  ),
@@ -197,25 +215,43 @@ regfile u_regfile(
     .wdata  (WB_rf_wdata)
 );
 
-wire [31:0] ID_rj_value  = rf_rdata1;
-wire [31:0] ID_rkd_value = rf_rdata2;
+// =====================================
+// Hazard Detection Unit
+// =====================================
 
-wire ID_rj_eq_rd = (ID_rj_value == ID_rkd_value);
-wire ID_br_taken;
-wire [31:0] ID_br_target;
+// 1. 判断当前指令是否�?要读源寄存器
+wire ID_need_rj = ~ID_inst_lu12i_w&~ID_inst_b&~ID_inst_bl;
+wire ID_need_rkd = ID_inst_add_w | ID_inst_sub_w | ID_inst_slt | ID_inst_sltu | ID_inst_nor | ID_inst_and | ID_inst_or | ID_inst_xor | ID_inst_beq | ID_inst_bne | ID_inst_st_w; 
 
-assign ID_br_taken = (   ID_inst_beq  &&  ID_rj_eq_rd
-                      || ID_inst_bne  && !ID_rj_eq_rd
-                      || ID_inst_jirl
-                      || ID_inst_bl
-                      || ID_inst_b
-                     ) && ID_valid;
-assign ID_br_target = (ID_inst_beq || ID_inst_bne || ID_inst_bl || ID_inst_b) ? (ID_pc + ID_br_offs) :
-                                                                                (ID_rj_value + ID_jirl_offs);
+// 2. �?�? EX，MEM，WB级是否有写入有效非零寄存器的指令
+wire EX_hazard = EX_valid && EX_gr_we &&(EX_dest !=5'b0);
+wire MEM_hazard = MEM_valid && MEM_gr_we && (MEM_dest!=5'b0);
+wire WB_hazard = WB_valid && WB_gr_we && (WB_dest!=5'b0);
 
-wire [31:0] ID_alu_src1 = ID_src1_is_pc  ? ID_pc[31:0] : ID_rj_value;
-wire [31:0] ID_alu_src2 = ID_src2_is_imm ? ID_imm      : ID_rkd_value;
+// 3. 数据相关RAM阻塞条件: �?要读的寄存器碰到了后面尚未写回的相同目标寄存�?
 
+assign ID_stall = ID_valid &&(
+    (ID_need_rj && rf_raddr1 != 5'b0 && (
+        (EX_hazard && EX_dest == rf_raddr1) || (MEM_hazard && MEM_dest == rf_raddr1) || (WB_hazard && WB_dest == rf_raddr1)
+    )) ||
+    (ID_need_rkd && rf_raddr2 != 5'b0 && (
+        (EX_hazard && EX_dest == rf_raddr2) || (MEM_hazard && MEM_dest == rf_raddr2) || (WB_hazard && WB_dest == rf_raddr2)
+    ))
+);
+
+// 4. 控制相关逻辑
+wire ID_rj_eq_rd = (rf_rdata1 == rf_rdata2);
+wire ID_br_taken = ((ID_inst_beq && ID_rj_eq_rd) || (ID_inst_bne && !ID_rj_eq_rd) || ID_inst_b || ID_inst_bl || ID_inst_jirl) && ID_valid;
+
+// 如果发生数据阻塞，寄存器值不可信，此时进制发生分支跳�?
+assign real_br_taken = ID_br_taken && ! ID_stall;
+assign ID_br_target = (ID_inst_beq || ID_inst_bne || ID_inst_bl || ID_inst_b) ? (ID_pc + ID_br_offs) : (rf_rdata1 + ID_jirl_offs);
+
+// 若确认分支跳转，将下�?拍IF到ID的valid信号冲刷�?0 (Cancel 下一条指�?)
+assign ID_cancel = real_br_taken;
+
+wire [31:0] ID_alu_src1 = ID_src1_is_pc  ? ID_pc[31:0] : rf_rdata1;
+wire [31:0] ID_alu_src2 = ID_src2_is_imm ? ID_imm      : rf_rdata2;
 
 // ====================================================================
 // EXreg (ID -> EX Pipeline Register)
@@ -244,6 +280,10 @@ always @(posedge clk) begin
         EX_dest         <= 5'b0;
         EX_rkd_value    <= 32'b0;
     end
+    // 阻塞发生时，插入气泡，将相关valid�?0
+    else if (ID_stall)begin
+        EX_valid <= 1'b0;
+    end
     else begin
         EX_valid        <= ID_valid;
         EX_pc           <= ID_pc;
@@ -254,7 +294,7 @@ always @(posedge clk) begin
         EX_mem_we       <= ID_mem_we;
         EX_gr_we        <= ID_gr_we;
         EX_dest         <= ID_dest;
-        EX_rkd_value    <= ID_rkd_value;
+        EX_rkd_value    <= rf_rdata2;
     end
 end
 
@@ -271,9 +311,9 @@ alu u_alu(
     .alu_result (EX_alu_result)
 );
 
-// SRAM 具有同步读写属性。因此EX级提供地址和控制信号，下一周期(MEM)刚好获取读出数据
+// SRAM 具有同步读写属�?��?�因此EX级提供地�?和控制信号，下一周期(MEM)刚好获取读出数据
 assign data_sram_en    = (EX_res_from_mem || EX_mem_we) && EX_valid;
-assign data_sram_we    = (EX_mem_we && EX_valid) ? 4'hF : 4'h0; // 访存且有效时写字节全通
+assign data_sram_we    = (EX_mem_we && EX_valid) ? 4'hF : 4'h0; // 访存且有效时写字节全�?
 assign data_sram_addr  = EX_alu_result;
 assign data_sram_wdata = EX_rkd_value;
 
@@ -314,7 +354,7 @@ end
 wire [31:0] MEM_mem_result;
 wire [31:0] MEM_final_result;
 
-// 同步SRAM在这一拍返回由EX阶段发出地址的数据
+// 同步SRAM在这�?拍返回由EX阶段发出地址的数�?
 assign MEM_mem_result   = data_sram_rdata;
 assign MEM_final_result = MEM_res_from_mem ? MEM_mem_result : MEM_alu_result;
 
@@ -349,9 +389,6 @@ end
 // ====================================================================
 // WB Stage
 // ====================================================================
-wire        WB_rf_we;
-wire [ 4:0] WB_rf_waddr;
-wire [31:0] WB_rf_wdata;
 
 assign WB_rf_we    = WB_gr_we && WB_valid;
 assign WB_rf_waddr = WB_dest;
