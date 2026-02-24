@@ -1,5 +1,5 @@
 module alu(
-  input  wire [11:0] alu_op,
+  input  wire [18:0] alu_op,
   input  wire [31:0] alu_src1,
   input  wire [31:0] alu_src2,
   output wire [31:0] alu_result
@@ -17,6 +17,13 @@ wire op_sll;   //logic left shift
 wire op_srl;   //logic right shift
 wire op_sra;   //arithmetic right shift
 wire op_lui;   //Load Upper Immediate
+wire op_mul;
+wire op_mulh;
+wire op_mulhu;
+wire op_div;
+wire op_mod;
+wire op_divu;
+wire op_modu;
 
 // control code decomposition
 assign op_add  = alu_op[ 0];
@@ -31,6 +38,13 @@ assign op_sll  = alu_op[ 8];
 assign op_srl  = alu_op[ 9];
 assign op_sra  = alu_op[10];
 assign op_lui  = alu_op[11];
+assign op_mul  = alu_op[12];
+assign op_mulh = alu_op[13];
+assign op_mulhu= alu_op[14];
+assign op_div  = alu_op[15];
+assign op_mod  = alu_op[16];
+assign op_divu = alu_op[17];
+assign op_modu = alu_op[18];
 
 wire [31:0] add_sub_result;
 wire [31:0] slt_result;
@@ -87,6 +101,35 @@ assign sr64_result = {{32{op_sra & alu_src1[31]}}, alu_src1[31:0]} >> alu_src2[4
 
 assign sr_result   = sr64_result[31:0];
 
+// Mult Result
+wire [63:0] mul_result_signed;
+wire [63:0] mul_result_unsigned;
+
+assign mul_result_signed   = $signed(alu_src1) * $signed(alu_src2);
+assign mul_result_unsigned = {32'b0, alu_src1} * {32'b0, alu_src2};
+
+wire [31:0] mul_final_result = ({32{op_mul  }} & mul_result_signed[31:0])
+                             | ({32{op_mulh }} & mul_result_signed[63:32])
+                             | ({32{op_mulhu}} & mul_result_unsigned[63:32]);
+
+// Div, Mod Result
+wire [31:0] div_result;
+wire [31:0] mod_result;
+wire [31:0] divu_result;
+wire [31:0] modu_result;
+// 有符号除法/取模
+assign div_result  = $signed(alu_src1) / $signed(alu_src2);
+assign mod_result  = $signed(alu_src1) % $signed(alu_src2);
+// 无符号除法/取模
+assign divu_result = alu_src1 / alu_src2;
+assign modu_result = alu_src1 % alu_src2;
+
+wire [31:0] div_mod_final_result = ({32{op_div }} & div_result)
+                                 | ({32{op_mod }} & mod_result)
+                                 | ({32{op_divu}} & divu_result)
+                                 | ({32{op_modu}} & modu_result);
+
+
 // final result mux
 assign alu_result = ({32{op_add|op_sub}} & add_sub_result)
                   | ({32{op_slt       }} & slt_result)
@@ -97,6 +140,8 @@ assign alu_result = ({32{op_add|op_sub}} & add_sub_result)
                   | ({32{op_xor       }} & xor_result)
                   | ({32{op_lui       }} & lui_result)
                   | ({32{op_sll       }} & sll_result)
-                  | ({32{op_srl|op_sra}} & sr_result);
+                  | ({32{op_srl|op_sra}} & sr_result)
+                  | mul_final_result
+                  | div_mod_final_result;
 
 endmodule

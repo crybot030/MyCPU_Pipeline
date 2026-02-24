@@ -137,7 +137,9 @@ decoder_4_16 u_dec1(.in(ID_op_25_22 ), .out(ID_op_25_22_d ));
 decoder_2_4  u_dec2(.in(ID_op_21_20 ), .out(ID_op_21_20_d ));
 decoder_5_32 u_dec3(.in(ID_op_19_15 ), .out(ID_op_19_15_d ));
 
+// 算数逻辑指令
 wire ID_inst_add_w   = ID_op_31_26_d[6'h00] & ID_op_25_22_d[4'h0] & ID_op_21_20_d[2'h1] & ID_op_19_15_d[5'h00];
+wire ID_inst_addi_w  = ID_op_31_26_d[6'h00] & ID_op_25_22_d[4'ha];
 wire ID_inst_sub_w   = ID_op_31_26_d[6'h00] & ID_op_25_22_d[4'h0] & ID_op_21_20_d[2'h1] & ID_op_19_15_d[5'h02];
 wire ID_inst_slt     = ID_op_31_26_d[6'h00] & ID_op_25_22_d[4'h0] & ID_op_21_20_d[2'h1] & ID_op_19_15_d[5'h04];
 wire ID_inst_sltu    = ID_op_31_26_d[6'h00] & ID_op_25_22_d[4'h0] & ID_op_21_20_d[2'h1] & ID_op_19_15_d[5'h05];
@@ -145,52 +147,89 @@ wire ID_inst_nor     = ID_op_31_26_d[6'h00] & ID_op_25_22_d[4'h0] & ID_op_21_20_
 wire ID_inst_and     = ID_op_31_26_d[6'h00] & ID_op_25_22_d[4'h0] & ID_op_21_20_d[2'h1] & ID_op_19_15_d[5'h09];
 wire ID_inst_or      = ID_op_31_26_d[6'h00] & ID_op_25_22_d[4'h0] & ID_op_21_20_d[2'h1] & ID_op_19_15_d[5'h0a];
 wire ID_inst_xor     = ID_op_31_26_d[6'h00] & ID_op_25_22_d[4'h0] & ID_op_21_20_d[2'h1] & ID_op_19_15_d[5'h0b];
+wire ID_inst_slti   = ID_op_31_26_d[6'h00] & ID_op_25_22_d[4'h8];
+wire ID_inst_sltui  = ID_op_31_26_d[6'h00] & ID_op_25_22_d[4'h9];
+wire ID_inst_andi   = ID_op_31_26_d[6'h00] & ID_op_25_22_d[4'hd];
+wire ID_inst_ori    = ID_op_31_26_d[6'h00] & ID_op_25_22_d[4'he];
+wire ID_inst_xori   = ID_op_31_26_d[6'h00] & ID_op_25_22_d[4'hf];
+
+// 移位指令
 wire ID_inst_slli_w  = ID_op_31_26_d[6'h00] & ID_op_25_22_d[4'h1] & ID_op_21_20_d[2'h0] & ID_op_19_15_d[5'h01];
 wire ID_inst_srli_w  = ID_op_31_26_d[6'h00] & ID_op_25_22_d[4'h1] & ID_op_21_20_d[2'h0] & ID_op_19_15_d[5'h09];
 wire ID_inst_srai_w  = ID_op_31_26_d[6'h00] & ID_op_25_22_d[4'h1] & ID_op_21_20_d[2'h0] & ID_op_19_15_d[5'h11];
-wire ID_inst_addi_w  = ID_op_31_26_d[6'h00] & ID_op_25_22_d[4'ha];
+wire ID_inst_sll_w  = ID_op_31_26_d[6'h00] & ID_op_25_22_d[4'h0] & ID_op_21_20_d[2'h1] & ID_op_19_15_d[5'h0e];
+wire ID_inst_srl_w  = ID_op_31_26_d[6'h00] & ID_op_25_22_d[4'h0] & ID_op_21_20_d[2'h1] & ID_op_19_15_d[5'h0f];
+wire ID_inst_sra_w  = ID_op_31_26_d[6'h00] & ID_op_25_22_d[4'h0] & ID_op_21_20_d[2'h1] & ID_op_19_15_d[5'h10];
+wire ID_inst_lu12i_w = ID_op_31_26_d[6'h05] & ~ID_inst[25];
+
+// 存取指令
 wire ID_inst_ld_w    = ID_op_31_26_d[6'h0a] & ID_op_25_22_d[4'h2];
 wire ID_inst_st_w    = ID_op_31_26_d[6'h0a] & ID_op_25_22_d[4'h6];
-wire ID_inst_jirl    = ID_op_31_26_d[6'h13];
+
+
+// 转移指令
 wire ID_inst_b       = ID_op_31_26_d[6'h14];
 wire ID_inst_bl      = ID_op_31_26_d[6'h15];
 wire ID_inst_beq     = ID_op_31_26_d[6'h16];
 wire ID_inst_bne     = ID_op_31_26_d[6'h17];
-wire ID_inst_lu12i_w = ID_op_31_26_d[6'h05] & ~ID_inst[25];
+wire ID_inst_jirl    = ID_op_31_26_d[6'h13];
+wire ID_inst_pcaddu12i = ID_op_31_26_d[6'h07] & ~ID_inst[25];
 
-wire [11:0] ID_alu_op;
-assign ID_alu_op[ 0] = ID_inst_add_w | ID_inst_addi_w | ID_inst_ld_w | ID_inst_st_w | ID_inst_jirl | ID_inst_bl;
+// 乘除法指令
+wire ID_inst_mul_w   = ID_op_31_26_d[6'h00] & ID_op_25_22_d[4'h0] & ID_op_21_20_d[2'h1] & ID_op_19_15_d[5'h18];
+wire ID_inst_mulh_w  = ID_op_31_26_d[6'h00] & ID_op_25_22_d[4'h0] & ID_op_21_20_d[2'h1] & ID_op_19_15_d[5'h19];
+wire ID_inst_mulh_wu = ID_op_31_26_d[6'h00] & ID_op_25_22_d[4'h0] & ID_op_21_20_d[2'h1] & ID_op_19_15_d[5'h1a];
+wire ID_inst_div_w   = ID_op_31_26_d[6'h00] & ID_op_25_22_d[4'h0] & ID_op_21_20_d[2'h2] & ID_op_19_15_d[5'h00];
+wire ID_inst_mod_w   = ID_op_31_26_d[6'h00] & ID_op_25_22_d[4'h0] & ID_op_21_20_d[2'h2] & ID_op_19_15_d[5'h01];
+wire ID_inst_div_wu  = ID_op_31_26_d[6'h00] & ID_op_25_22_d[4'h0] & ID_op_21_20_d[2'h2] & ID_op_19_15_d[5'h02];
+wire ID_inst_mod_wu  = ID_op_31_26_d[6'h00] & ID_op_25_22_d[4'h0] & ID_op_21_20_d[2'h2] & ID_op_19_15_d[5'h03];
+
+wire [18:0] ID_alu_op;
+assign ID_alu_op[ 0] = ID_inst_add_w | ID_inst_addi_w | ID_inst_ld_w | ID_inst_st_w | ID_inst_jirl | ID_inst_bl | ID_inst_pcaddu12i;
 assign ID_alu_op[ 1] = ID_inst_sub_w;
-assign ID_alu_op[ 2] = ID_inst_slt;
-assign ID_alu_op[ 3] = ID_inst_sltu;
-assign ID_alu_op[ 4] = ID_inst_and;
+assign ID_alu_op[ 2] = ID_inst_slt | ID_inst_slti;
+assign ID_alu_op[ 3] = ID_inst_sltu | ID_inst_sltui;
+assign ID_alu_op[ 4] = ID_inst_and | ID_inst_andi;
 assign ID_alu_op[ 5] = ID_inst_nor;
-assign ID_alu_op[ 6] = ID_inst_or;
-assign ID_alu_op[ 7] = ID_inst_xor;
-assign ID_alu_op[ 8] = ID_inst_slli_w;
-assign ID_alu_op[ 9] = ID_inst_srli_w;
-assign ID_alu_op[10] = ID_inst_srai_w;
+assign ID_alu_op[ 6] = ID_inst_or | ID_inst_ori;
+assign ID_alu_op[ 7] = ID_inst_xor | ID_inst_xori;
+assign ID_alu_op[ 8] = ID_inst_slli_w | ID_inst_sll_w;
+assign ID_alu_op[ 9] = ID_inst_srli_w | ID_inst_srl_w;
+assign ID_alu_op[10] = ID_inst_srai_w | ID_inst_sra_w;
 assign ID_alu_op[11] = ID_inst_lu12i_w;
+assign ID_alu_op[12] = ID_inst_mul_w;
+assign ID_alu_op[13] = ID_inst_mulh_w;
+assign ID_alu_op[14] = ID_inst_mulh_wu;
+assign ID_alu_op[15] = ID_inst_div_w;
+assign ID_alu_op[16] = ID_inst_mod_w;
+assign ID_alu_op[17] = ID_inst_div_wu;
+assign ID_alu_op[18] = ID_inst_mod_wu;
 
+// 立即数扩展
 wire ID_need_ui5   =  ID_inst_slli_w | ID_inst_srli_w | ID_inst_srai_w;
-wire ID_need_si12  =  ID_inst_addi_w | ID_inst_ld_w | ID_inst_st_w;
+wire ID_need_ui12 = ID_inst_andi | ID_inst_ori | ID_inst_xori; // 无符号/零扩展
+wire ID_need_si12  =  ID_inst_addi_w | ID_inst_ld_w | ID_inst_st_w | ID_inst_slti | ID_inst_sltui;
 wire ID_need_si16  =  ID_inst_jirl | ID_inst_beq | ID_inst_bne;
-wire ID_need_si20  =  ID_inst_lu12i_w;
+wire ID_need_si20  =  ID_inst_lu12i_w | ID_inst_pcaddu12i;
 wire ID_need_si26  =  ID_inst_b | ID_inst_bl;
 wire ID_src2_is_4  =  ID_inst_jirl | ID_inst_bl;
 
-wire [31:0] ID_imm = ID_src2_is_4 ? 32'h4 :
-                     ID_need_si20 ? {ID_i20[19:0], 12'b0} :
-                     /*need_ui5 || need_si12*/{{20{ID_i12[11]}}, ID_i12[11:0]} ;
+wire [31:0] ID_imm = 
+    ID_src2_is_4      ? 32'h4 :
+    ID_need_si20      ? {ID_i20[19:0], 12'b0} :
+    ID_need_ui12      ? {20'b0, ID_i12[11:0]} : // 零扩展
+                        {{20{ID_i12[11]}}, ID_i12[11:0]} ; // 默认符号扩展
 
 wire [31:0] ID_br_offs  = ID_need_si26 ? {{ 4{ID_i26[25]}}, ID_i26[25:0], 2'b0} :
                                          {{14{ID_i16[15]}}, ID_i16[15:0], 2'b0} ;
 wire [31:0] ID_jirl_offs = {{14{ID_i16[15]}}, ID_i16[15:0], 2'b0};
 
 wire ID_src_reg_is_rd = ID_inst_beq | ID_inst_bne | ID_inst_st_w;
-wire ID_src1_is_pc    = ID_inst_jirl | ID_inst_bl;
-wire ID_src2_is_imm   = ID_inst_slli_w | ID_inst_srli_w | ID_inst_srai_w | ID_inst_addi_w |
-                        ID_inst_ld_w   | ID_inst_st_w   | ID_inst_lu12i_w| ID_inst_jirl   | ID_inst_bl;
+wire ID_src1_is_pc    = ID_inst_jirl | ID_inst_bl | ID_inst_pcaddu12i;
+wire ID_src2_is_imm = ID_inst_slli_w | ID_inst_srli_w | ID_inst_srai_w | ID_inst_addi_w |
+                      ID_inst_ld_w   | ID_inst_st_w   | ID_inst_lu12i_w| ID_inst_jirl | 
+                      ID_inst_bl     | ID_inst_slti   | ID_inst_sltui  | ID_inst_andi | 
+                      ID_inst_ori    | ID_inst_xori   | ID_inst_pcaddu12i;
 
 wire ID_res_from_mem = ID_inst_ld_w;
 wire ID_dst_is_r1    = ID_inst_bl;
@@ -234,10 +273,13 @@ reg        WB_gr_we;
 reg [ 4:0] WB_dest;
 
 // 1. 判断当前指令是否实际需要读源寄存器
-wire ID_need_rj = ~ID_inst_lu12i_w & ~ID_inst_b & ~ID_inst_bl;
+wire ID_need_rj = ~ID_inst_lu12i_w & ~ID_inst_b & ~ID_inst_bl | ~ID_inst_pcaddu12i;
 wire ID_need_rkd = ID_inst_add_w | ID_inst_sub_w | ID_inst_slt | ID_inst_sltu | 
-                   ID_inst_nor | ID_inst_and | ID_inst_or | ID_inst_xor | 
-                   ID_inst_beq | ID_inst_bne | ID_inst_st_w;
+                     ID_inst_nor | ID_inst_and | ID_inst_or | ID_inst_xor | 
+                     ID_inst_beq | ID_inst_bne | ID_inst_st_w | 
+                     ID_inst_sll_w | ID_inst_srl_w | ID_inst_sra_w | // 新增寄存器移位
+                     ID_inst_mul_w | ID_inst_mulh_w | ID_inst_mulh_wu | // 新增乘法
+                     ID_inst_div_w | ID_inst_mod_w | ID_inst_div_wu | ID_inst_mod_wu; // 新增除法
 
 // LOAD-USE 冒险检测
 assign ID_stall = ID_valid && EX_valid && EX_res_from_mem && (
@@ -270,7 +312,7 @@ wire [31:0] ID_alu_src2 = ID_src2_is_imm ? ID_imm      : ID_rkd_value;
 // EXreg (ID -> EX Pipeline Register)
 // ====================================================================
 reg [31:0] EX_pc;
-reg [11:0] EX_alu_op;
+reg [18:0] EX_alu_op;
 reg [31:0] EX_alu_src1;
 reg [31:0] EX_alu_src2;
 reg        EX_res_from_mem;
@@ -281,7 +323,7 @@ always @(posedge clk) begin
     if (reset) begin
         EX_valid        <= 1'b0;
         EX_pc           <= 32'b0;
-        EX_alu_op       <= 12'b0;
+        EX_alu_op       <= 19'b0;
         EX_alu_src1     <= 32'b0;
         EX_alu_src2     <= 32'b0;
         EX_res_from_mem <= 1'b0;
